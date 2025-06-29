@@ -31,6 +31,10 @@ func main() {
 	cmd := &cli.Command{
 		Name:  "notecli",
 		Usage: "note management CLI",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			tags := cmd.StringSlice("tags")
+			return listNotes(noteEngine, tags)
+		},
 		Commands: []*cli.Command{
 			{
 				Name:    "add",
