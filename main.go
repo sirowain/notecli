@@ -5,13 +5,28 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 
 	"github.com/sirowain/notecli/pkg/engine"
 	"github.com/sirowain/notecli/pkg/engine/localdb"
+	"github.com/sirowain/notecli/pkg/utils"
 	"github.com/urfave/cli/v3"
 )
 
 func main() {
+	noteEngine, err := setupDatabase()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error initializing note engine:", err)
+		panic(err)
+	}
+
+	// Close the engine when done
+	defer func() {
+		if closeErr := noteEngine.Close(); closeErr != nil {
+			fmt.Fprintln(os.Stderr, "Error closing note engine:", closeErr)
+		}
+	}()
+
 	cmd := &cli.Command{
 		Commands: []*cli.Command{
 			{
@@ -33,7 +48,35 @@ func main() {
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					headline := cmd.String("headline")
 					tags := cmd.StringSlice("tags")
-					return addNote(cmd.Args().First(), headline, tags)
+					return addNote(noteEngine, cmd.Args().First(), headline, tags)
+				},
+			},
+			{
+				Name:    "update",
+				Aliases: []string{"u"},
+				Usage:   "update a note by id",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "content",
+						Aliases: []string{"c"},
+						Usage:   "content of the note",
+					},
+					&cli.StringFlag{
+						Name:    "headline",
+						Aliases: []string{"h"},
+						Usage:   "headline of the note",
+					},
+					&cli.StringSliceFlag{
+						Name:    "tags",
+						Aliases: []string{"t"},
+						Usage:   "tags of the note (comma-separated)",
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					content := cmd.String("content")
+					headline := cmd.String("headline")
+					tags := cmd.StringSlice("tags")
+					return updateNote(noteEngine, cmd.Args().First(), content, headline, tags)
 				},
 			},
 			{
@@ -49,7 +92,7 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					tags := cmd.StringSlice("tags")
-					return listNotes(tags)
+					return listNotes(noteEngine, tags)
 				},
 			},
 			{
@@ -57,7 +100,15 @@ func main() {
 				Aliases: []string{"s"},
 				Usage:   "show a note by id",
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return showNote(cmd.Args().First())
+					return showNote(noteEngine, cmd.Args().First())
+				},
+			},
+			{
+				Name:    "edit",
+				Aliases: []string{"e"},
+				Usage:   "edit a note in the default editor",
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					return editNote(noteEngine, cmd.Args().First())
 				},
 			},
 			{
@@ -77,7 +128,7 @@ func main() {
 						fmt.Fprintln(os.Stderr, "Delete all notes functionality is not implemented yet.")
 						return nil
 					}
-					return deleteNote(cmd.Args().First())
+					return deleteNote(noteEngine, cmd.Args().First())
 				},
 			},
 		},
@@ -88,20 +139,7 @@ func main() {
 	}
 }
 
-func deleteNote(noteId string) error {
-	noteEngine, err := setupDatabase()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error initializing note engine:", err)
-		panic(err)
-	}
-
-	// Close the engine when done
-	defer func() {
-		if closeErr := noteEngine.Close(); closeErr != nil {
-			fmt.Fprintln(os.Stderr, "Error closing note engine:", closeErr)
-		}
-	}()
-
+func deleteNote(noteEngine engine.NoteEngine, noteId string) error {
 	if err := noteEngine.DeleteNote(noteId); err != nil {
 		return fmt.Errorf("failed to delete note: %w", err)
 	}
@@ -109,20 +147,7 @@ func deleteNote(noteId string) error {
 	return nil
 }
 
-func showNote(noteId string) error {
-	noteEngine, err := setupDatabase()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error initializing note engine:", err)
-		panic(err)
-	}
-
-	// Close the engine when done
-	defer func() {
-		if closeErr := noteEngine.Close(); closeErr != nil {
-			fmt.Fprintln(os.Stderr, "Error closing note engine:", closeErr)
-		}
-	}()
-
+func showNote(noteEngine engine.NoteEngine, noteId string) error {
 	note, err := noteEngine.ReadNote(noteId)
 	if err != nil {
 		return fmt.Errorf("failed to read note: %w", err)
@@ -136,20 +161,7 @@ func showNote(noteId string) error {
 	return nil
 }
 
-func addNote(content, headline string, tags []string) error {
-	noteEngine, err := setupDatabase()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error initializing note engine:", err)
-		panic(err)
-	}
-
-	// Close the engine when done
-	defer func() {
-		if closeErr := noteEngine.Close(); closeErr != nil {
-			fmt.Fprintln(os.Stderr, "Error closing note engine:", closeErr)
-		}
-	}()
-
+func addNote(noteEngine engine.NoteEngine, content, headline string, tags []string) error {
 	note, err := noteEngine.CreateNote(content, headline, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create note: %w", err)
@@ -158,20 +170,16 @@ func addNote(content, headline string, tags []string) error {
 	return nil
 }
 
-func listNotes(tags []string) error {
-	noteEngine, err := setupDatabase()
+func updateNote(noteEngine engine.NoteEngine, noteId, content, headline string, tags []string) error {
+	err := noteEngine.UpdateNote(noteId, content, headline, tags)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error initializing note engine:", err)
-		panic(err)
+		return fmt.Errorf("failed to update note: %w", err)
 	}
+	fmt.Println("Note updated successfully.")
+	return nil
+}
 
-	// Close the engine when done
-	defer func() {
-		if closeErr := noteEngine.Close(); closeErr != nil {
-			fmt.Fprintln(os.Stderr, "Error closing note engine:", closeErr)
-		}
-	}()
-
+func listNotes(noteEngine engine.NoteEngine, tags []string) error {
 	notes, err := noteEngine.ListNotes(tags)
 	if err != nil {
 		return fmt.Errorf("failed to list notes: %w", err)
@@ -189,6 +197,54 @@ func listNotes(tags []string) error {
 		fmt.Printf("[%s] %s\n",
 			note.GetId(), description)
 	}
+	return nil
+}
+
+func editNote(noteEngine engine.NoteEngine, noteId string) error {
+	note, err := noteEngine.ReadNote(noteId)
+	if err != nil {
+		return utils.ErrNoteNotFound
+	}
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
+	}
+
+	// Temp file
+	tmpfile, err := os.CreateTemp("", "notecli-buffer-*.txt")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(note.GetContent())); err != nil {
+		return err
+	}
+	tmpfile.Close()
+
+	// Open the editor synchronously
+	cmd := exec.Command(editor, tmpfile.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	// Read the edited content
+	editedContent, err := os.ReadFile(tmpfile.Name())
+	if err != nil {
+		return err
+	}
+
+	// Update the note with the edited content
+	if err := noteEngine.UpdateNote(noteId, string(editedContent), note.GetHeadline(),
+		note.GetTags()); err != nil {
+		return fmt.Errorf("failed to update note: %w", err)
+	}
+	fmt.Println("Note updated successfully.")
 	return nil
 }
 

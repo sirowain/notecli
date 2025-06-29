@@ -99,9 +99,6 @@ func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []stri
 	if noteId == "" {
 		return utils.ErrNoteIdRequired
 	}
-	if headline == "" && content == "" {
-		return utils.ErrEmptyHeadlineAndContent
-	}
 
 	return e.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte("notes"))
@@ -126,6 +123,10 @@ func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []stri
 			note.SetTags(tags)
 		}
 		note.UpdatedAt = utils.GetCurrentTimestamp()
+
+		if note.GetContent() == "" && note.GetHeadline() == "" {
+			return utils.ErrEmptyHeadlineAndContent
+		}
 
 		newData, err := note.ToJson()
 		if err != nil {
