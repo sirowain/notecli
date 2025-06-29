@@ -1,7 +1,6 @@
 package localdb
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/boltdb/bolt"
@@ -36,23 +35,28 @@ func (e *LocalDBEngine) CreateNote(content, headline string, tags []string) (mod
 	if headline == "" && content == "" {
 		return models.Note{}, utils.ErrEmptyHeadlineAndContent
 	}
-	note := models.NewNote(headline, content, tags)
-	if note == nil {
-		return models.Note{}, utils.ErrNoteCreationFailed
-	}
+	note := &models.Note{}
 	err := e.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte("notes"))
-		fmt.Println("Bucket:", bucket)
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		fmt.Println("Marshalling note to JSON")
-		data, err := note.ToJson()
-		fmt.Println("Marshalled data:", string(data))
+
+		// Generate a new ID for the note
+		id, err := bucket.NextSequence()
 		if err != nil {
 			return err
 		}
-		if err := bucket.Put([]byte(note.Id), data); err != nil {
+
+		note = models.NewNote(utils.NoteId(id), headline, content, tags)
+		if note == nil {
+			return utils.ErrNoteCreationFailed
+		}
+		data, err := note.ToJson()
+		if err != nil {
+			return err
+		}
+		if err := bucket.Put(utils.Itob(utils.NoteId(id)), data); err != nil {
 			return err
 		}
 		return nil
@@ -65,8 +69,8 @@ func (e *LocalDBEngine) CreateNote(content, headline string, tags []string) (mod
 }
 
 // ReadNote reads a note by ID from the local database
-func (e *LocalDBEngine) ReadNote(noteId string) (*models.Note, error) {
-	if noteId == "" {
+func (e *LocalDBEngine) ReadNote(noteId utils.NoteId) (*models.Note, error) {
+	if noteId == 0 {
 		return nil, utils.ErrNoteIdRequired
 	}
 	var note *models.Note
@@ -75,7 +79,7 @@ func (e *LocalDBEngine) ReadNote(noteId string) (*models.Note, error) {
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		data := bucket.Get([]byte(noteId))
+		data := bucket.Get(utils.Itob(noteId))
 		if data == nil {
 			return utils.ErrNoteNotFound
 		}
@@ -95,8 +99,8 @@ func (e *LocalDBEngine) ReadNote(noteId string) (*models.Note, error) {
 }
 
 // UpdateNote updates an existing note in the local database
-func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []string) error {
-	if noteId == "" {
+func (e *LocalDBEngine) UpdateNote(noteId utils.NoteId, content, headline string, tags []string) error {
+	if noteId == 0 {
 		return utils.ErrNoteIdRequired
 	}
 
@@ -105,7 +109,7 @@ func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []stri
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		data := bucket.Get([]byte(noteId))
+		data := bucket.Get(utils.Itob(noteId))
 		if data == nil {
 			return utils.ErrNoteNotFound
 		}
@@ -133,7 +137,7 @@ func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []stri
 			return err
 		}
 
-		if err := bucket.Put([]byte(noteId), newData); err != nil {
+		if err := bucket.Put(utils.Itob(noteId), newData); err != nil {
 			return utils.ErrNoteUpdateFailed
 		}
 
@@ -142,8 +146,8 @@ func (e *LocalDBEngine) UpdateNote(noteId, content, headline string, tags []stri
 }
 
 // DeleteNote deletes a note by ID from the local database
-func (e *LocalDBEngine) DeleteNote(noteId string) error {
-	if noteId == "" {
+func (e *LocalDBEngine) DeleteNote(noteId utils.NoteId) error {
+	if noteId == 0 {
 		return utils.ErrNoteIdRequired
 	}
 	return e.db.Update(func(tx *bolt.Tx) error {
@@ -151,7 +155,7 @@ func (e *LocalDBEngine) DeleteNote(noteId string) error {
 		if bucket == nil {
 			return ErrBucketNotFound
 		}
-		if err := bucket.Delete([]byte(noteId)); err != nil {
+		if err := bucket.Delete(utils.Itob(noteId)); err != nil {
 			return utils.ErrNoteDeletionFailed
 		}
 		return nil

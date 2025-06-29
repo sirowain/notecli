@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/sirowain/notecli/pkg/engine"
 	"github.com/sirowain/notecli/pkg/engine/localdb"
@@ -28,6 +29,8 @@ func main() {
 	}()
 
 	cmd := &cli.Command{
+		Name:  "notecli",
+		Usage: "note management CLI",
 		Commands: []*cli.Command{
 			{
 				Name:    "add",
@@ -44,11 +47,17 @@ func main() {
 						Aliases: []string{"t"},
 						Usage:   "tags of the note (comma-separated)",
 					},
+					&cli.BoolFlag{
+						Name:    "editor",
+						Aliases: []string{"e"},
+						Usage:   "use editor to add note content",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					headline := cmd.String("headline")
 					tags := cmd.StringSlice("tags")
-					return addNote(noteEngine, cmd.Args().First(), headline, tags)
+					useEditor := cmd.Bool("editor")
+					return addNote(noteEngine, cmd.Args().First(), headline, tags, useEditor)
 				},
 			},
 			{
@@ -87,7 +96,7 @@ func main() {
 					&cli.StringSliceFlag{
 						Name:    "tags",
 						Aliases: []string{"t"},
-						Usage:   "filter notes by tags",
+						Usage:   "filter notes by tags (comma-separated)",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -140,7 +149,11 @@ func main() {
 }
 
 func deleteNote(noteEngine engine.NoteEngine, noteId string) error {
-	if err := noteEngine.DeleteNote(noteId); err != nil {
+	noteIdUint64, err := utils.Stoi(noteId)
+	if err != nil {
+		return fmt.Errorf("invalid note ID: %w", err)
+	}
+	if err := noteEngine.DeleteNote(noteIdUint64); err != nil {
 		return fmt.Errorf("failed to delete note: %w", err)
 	}
 	fmt.Println("Note deleted successfully.")
@@ -148,7 +161,11 @@ func deleteNote(noteEngine engine.NoteEngine, noteId string) error {
 }
 
 func showNote(noteEngine engine.NoteEngine, noteId string) error {
-	note, err := noteEngine.ReadNote(noteId)
+	noteIdUint64, err := utils.Stoi(noteId)
+	if err != nil {
+		return fmt.Errorf("invalid note ID: %w", err)
+	}
+	note, err := noteEngine.ReadNote(noteIdUint64)
 	if err != nil {
 		return fmt.Errorf("failed to read note: %w", err)
 	}
@@ -161,7 +178,14 @@ func showNote(noteEngine engine.NoteEngine, noteId string) error {
 	return nil
 }
 
-func addNote(noteEngine engine.NoteEngine, content, headline string, tags []string) error {
+func addNote(noteEngine engine.NoteEngine, content, headline string, tags []string, useEditor bool) error {
+	if useEditor {
+		editedContent, err := editWithEditor(content)
+		if err != nil {
+			return err
+		}
+		content = editedContent
+	}
 	note, err := noteEngine.CreateNote(content, headline, tags)
 	if err != nil {
 		return fmt.Errorf("failed to create note: %w", err)
@@ -171,7 +195,11 @@ func addNote(noteEngine engine.NoteEngine, content, headline string, tags []stri
 }
 
 func updateNote(noteEngine engine.NoteEngine, noteId, content, headline string, tags []string) error {
-	err := noteEngine.UpdateNote(noteId, content, headline, tags)
+	noteIdUint64, err := utils.Stoi(noteId)
+	if err != nil {
+		return fmt.Errorf("invalid note ID: %w", err)
+	}
+	err = noteEngine.UpdateNote(noteIdUint64, content, headline, tags)
 	if err != nil {
 		return fmt.Errorf("failed to update note: %w", err)
 	}
@@ -192,7 +220,9 @@ func listNotes(noteEngine engine.NoteEngine, tags []string) error {
 	for _, note := range notes {
 		description := note.GetHeadline()
 		if note.Headline == "" {
-			description = note.GetContent()
+			description = strings.Split(note.GetContent(), "\n")[0] // Use first line of content as headline if empty
+			description = strings.TrimSpace(description)
+			description = utils.TruncateString(description, 50) // Truncate to 50 characters
 		}
 		fmt.Printf("[%s] %s\n",
 			note.GetId(), description)
@@ -201,11 +231,30 @@ func listNotes(noteEngine engine.NoteEngine, tags []string) error {
 }
 
 func editNote(noteEngine engine.NoteEngine, noteId string) error {
-	note, err := noteEngine.ReadNote(noteId)
+	noteIdUint64, err := utils.Stoi(noteId)
+	if err != nil {
+		return fmt.Errorf("invalid note ID: %w", err)
+	}
+	note, err := noteEngine.ReadNote(noteIdUint64)
 	if err != nil {
 		return utils.ErrNoteNotFound
 	}
 
+	editedContent, err := editWithEditor(note.GetContent())
+	if err != nil {
+		return err
+	}
+
+	// Update the note with the edited content
+	if err := noteEngine.UpdateNote(noteIdUint64, editedContent, note.GetHeadline(),
+		note.GetTags()); err != nil {
+		return fmt.Errorf("failed to update note: %w", err)
+	}
+	fmt.Println("Note updated successfully.")
+	return nil
+}
+
+func editWithEditor(content string) (string, error) {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = "vim"
@@ -214,12 +263,12 @@ func editNote(noteEngine engine.NoteEngine, noteId string) error {
 	// Temp file
 	tmpfile, err := os.CreateTemp("", "notecli-buffer-*.txt")
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer os.Remove(tmpfile.Name())
 
-	if _, err := tmpfile.Write([]byte(note.GetContent())); err != nil {
-		return err
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		return "", err
 	}
 	tmpfile.Close()
 
@@ -230,22 +279,16 @@ func editNote(noteEngine engine.NoteEngine, noteId string) error {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return err
+		return "", err
 	}
 
 	// Read the edited content
 	editedContent, err := os.ReadFile(tmpfile.Name())
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Update the note with the edited content
-	if err := noteEngine.UpdateNote(noteId, string(editedContent), note.GetHeadline(),
-		note.GetTags()); err != nil {
-		return fmt.Errorf("failed to update note: %w", err)
-	}
-	fmt.Println("Note updated successfully.")
-	return nil
+	return string(editedContent), nil
 }
 
 func setupDatabase() (engine.NoteEngine, error) {

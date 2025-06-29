@@ -25,9 +25,8 @@ func (n *Note) ToJson() ([]byte, error) {
 }
 
 // NewNote creates a new Note instance with the current timestamp and a generated ID.
-func NewNote(headline, content string, tags []string) *Note {
+func NewNote(noteId utils.NoteId, headline, content string, tags []string) *Note {
 	timestamp := utils.GetCurrentTimestamp()
-	noteId := utils.NewNoteId()
 	return &Note{
 		Id:        noteId,
 		Headline:  headline,
