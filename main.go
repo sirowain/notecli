@@ -177,8 +177,11 @@ func showNote(noteEngine engine.NoteEngine, noteId string) error {
 		fmt.Println("Note not found.")
 		return nil
 	}
-	fmt.Printf("Id: %s\nHeadline: %s\nContent: %s\nTags: %v\nCreated At: %s\nUpdated At: %s\n",
-		note.GetId(), note.GetHeadline(), note.GetContent(), note.GetTags(), note.CreatedAt, note.UpdatedAt)
+	fmt.Printf("%s | %s\n", note.GetId(), note.GetHeadline())
+	fmt.Println(strings.Repeat("-", 50))
+	fmt.Println(note.GetContent())
+	fmt.Println(strings.Repeat("-", 50))
+	fmt.Printf("Created: %s | Updated: %s\n", note.CreatedAt, note.UpdatedAt)
 	return nil
 }
 
