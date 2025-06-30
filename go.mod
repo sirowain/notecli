@@ -3,6 +3,7 @@ module github.com/sirowain/notecli
 go 1.24.4
 
 require (
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect

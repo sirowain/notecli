@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/sirowain/notecli/pkg/engine"
 	"github.com/sirowain/notecli/pkg/engine/localdb"
 	"github.com/sirowain/notecli/pkg/utils"
@@ -37,9 +38,10 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			{
-				Name:    "add",
-				Aliases: []string{"a"},
-				Usage:   "add a note to the list",
+				Name:                   "add",
+				Aliases:                []string{"a"},
+				Usage:                  "add a note to the list",
+				UseShortOptionHandling: true,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "headline",
@@ -56,12 +58,24 @@ func main() {
 						Aliases: []string{"e"},
 						Usage:   "use editor to add note content",
 					},
+					&cli.BoolFlag{
+						Name:    "clipboard",
+						Aliases: []string{"c"},
+						Usage:   "add note from clipboard content",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					headline := cmd.String("headline")
 					tags := cmd.StringSlice("tags")
 					useEditor := cmd.Bool("editor")
-					return addNote(noteEngine, cmd.Args().First(), headline, tags, useEditor)
+					useClipboard := cmd.Bool("clipboard")
+					var content string
+					if useClipboard {
+						content, _ = clipboard.ReadAll()
+					} else {
+						content = cmd.Args().First()
+					}
+					return addNote(noteEngine, content, headline, tags, useEditor)
 				},
 			},
 			{
@@ -112,8 +126,15 @@ func main() {
 				Name:    "show",
 				Aliases: []string{"s"},
 				Usage:   "show a note by id",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "clipboard",
+						Aliases: []string{"c"},
+						Usage:   "copy note content to clipboard",
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return showNote(noteEngine, cmd.Args().First())
+					return showNote(noteEngine, cmd.Args().First(), cmd.Bool("clipboard"))
 				},
 			},
 			{
@@ -164,7 +185,7 @@ func deleteNote(noteEngine engine.NoteEngine, noteId string) error {
 	return nil
 }
 
-func showNote(noteEngine engine.NoteEngine, noteId string) error {
+func showNote(noteEngine engine.NoteEngine, noteId string, copyToClipboard bool) error {
 	noteIdUint64, err := utils.Stoi(noteId)
 	if err != nil {
 		return fmt.Errorf("invalid note ID: %w", err)
@@ -181,7 +202,13 @@ func showNote(noteEngine engine.NoteEngine, noteId string) error {
 	fmt.Println(strings.Repeat("-", 50))
 	fmt.Println(note.GetContent())
 	fmt.Println(strings.Repeat("-", 50))
+	fmt.Printf("Tags: %s\n", strings.Join(note.GetTags(), ", "))
 	fmt.Printf("Created: %s | Updated: %s\n", note.CreatedAt, note.UpdatedAt)
+
+	if copyToClipboard {
+		clipboard.WriteAll(note.GetContent())
+		fmt.Println("Note content copied to clipboard.")
+	}
 	return nil
 }
 
@@ -223,7 +250,7 @@ func listNotes(noteEngine engine.NoteEngine, tags []string) error {
 		fmt.Println("No notes found.")
 		return nil
 	}
-	fmt.Println("Notes found:")
+	fmt.Printf("Notes found (%d):\n", len(notes))
 	for _, note := range notes {
 		description := note.GetHeadline()
 		if note.Headline == "" {
