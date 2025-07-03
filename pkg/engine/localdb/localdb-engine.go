@@ -32,8 +32,8 @@ func (e *LocalDBEngine) Close() error {
 
 // CreateNote creates a new note in the local database
 func (e *LocalDBEngine) CreateNote(content, headline string, tags []string) (models.Note, error) {
-	if headline == "" && content == "" {
-		return models.Note{}, utils.ErrEmptyHeadlineAndContent
+	if content == "" {
+		return models.Note{}, utils.ErrEmptyContent
 	}
 	note := &models.Note{}
 	err := e.db.Update(func(tx *bolt.Tx) error {
@@ -128,8 +128,8 @@ func (e *LocalDBEngine) UpdateNote(noteId utils.NoteId, content, headline string
 		}
 		note.UpdatedAt = utils.GetCurrentTimestamp()
 
-		if note.GetContent() == "" && note.GetHeadline() == "" {
-			return utils.ErrEmptyHeadlineAndContent
+		if note.GetContent() == "" {
+			return utils.ErrEmptyContent
 		}
 
 		newData, err := note.ToJson()

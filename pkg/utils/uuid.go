@@ -25,7 +25,6 @@ func Itob(v NoteId) []byte {
 func Stoi(s string) (NoteId, error) {
 	id, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		fmt.Println("Error parsing:", err)
 		return NoteId(0), err
 	}
 

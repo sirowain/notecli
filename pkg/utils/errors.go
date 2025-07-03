@@ -2,8 +2,8 @@ package utils
 
 import "errors"
 
-// ErrEmptyHeadlineAndContent is returned when both headline and content are empty
-var ErrEmptyHeadlineAndContent = errors.New("headline and content cannot be both empty")
+// ErrEmptyHeadlineAndContent is returned when content is empty
+var ErrEmptyContent = errors.New("content cannot be empty")
 
 // ErrNoteIdRequired is returned when a note ID is required but not provided
 var ErrNoteIdRequired = errors.New("note ID is required")

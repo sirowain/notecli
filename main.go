@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -32,10 +31,6 @@ func main() {
 	cmd := &cli.Command{
 		Name:  "notecli",
 		Usage: "note management CLI",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			tags := cmd.StringSlice("tags")
-			return listNotes(noteEngine, tags)
-		},
 		Commands: []*cli.Command{
 			{
 				Name:                   "add",
@@ -169,7 +164,7 @@ func main() {
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Printf("%s\n", fmt.Errorf("%w", err))
 	}
 }
 
@@ -317,12 +312,17 @@ func editWithEditor(content string) (string, error) {
 	}
 
 	// Read the edited content
-	editedContent, err := os.ReadFile(tmpfile.Name())
+	editedContentBytes, err := os.ReadFile(tmpfile.Name())
 	if err != nil {
 		return "", err
 	}
 
-	return string(editedContent), nil
+	editedContent := strings.TrimSpace(string(editedContentBytes))
+	if editedContent == "" {
+		return "", fmt.Errorf("Empty note discarded")
+	}
+
+	return strings.TrimSpace(string(editedContent)), nil
 }
 
 func setupDatabase() (engine.NoteEngine, error) {
